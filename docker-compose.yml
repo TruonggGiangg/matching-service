@@ -1,0 +1,44 @@
+version: '3.8'
+services:
+  matching-service:
+    build: .
+    container_name: matching-service
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+    restart: unless-stopped
+  mongo:
+    image: mongo:6.0
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+volumes:
+  mongo_data:
+
+
+# version: '3.8': Sử dụng cú pháp Docker Compose phiên bản 3.8 (phổ biến, hỗ trợ nhiều tính năng mới).
+
+# services: Định nghĩa các dịch vụ sẽ chạy trong các container.
+
+# matching-service:
+
+# build: .: Build image từ Dockerfile trong thư mục hiện tại.
+# container_name: matching-service: Đặt tên container là matching-service.
+# ports: Mở cổng 3001 trên máy host và container (ứng dụng Node.js sẽ chạy ở đây).
+# env_file: Đọc biến môi trường từ file .env.
+# depends_on: Đảm bảo MongoDB khởi động trước khi service này chạy.
+# restart: unless-stopped: Tự động restart container nếu bị lỗi, trừ khi bạn dừng thủ công.
+# mongo:
+
+# image: mongo:6.0: Sử dụng image MongoDB phiên bản 6.0.
+# container_name: mongo: Đặt tên container là mongo.
+# ports: Mở cổng 27017 cho MongoDB.
+# volumes: Lưu dữ liệu MongoDB vào volume mongo_data để không bị mất khi container bị xóa.
+# volumes:
+
+# mongo_data: Định nghĩa volume dùng để lưu trữ dữ liệu MongoDB.
