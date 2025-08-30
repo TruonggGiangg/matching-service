@@ -53,7 +53,7 @@ Ví dụ body tạo investment:
     "rate": 17.6,
     "createdDate": "2025-07-01T02:12:11.028+00:00"
   },
-  "status": "waiting_other",
+  "status": "waiting",
   "contractId": "CONTRACT_ID",
   "lender": "testuser123"
 }

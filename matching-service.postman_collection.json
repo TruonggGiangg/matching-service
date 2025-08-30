@@ -1,0 +1,57 @@
+{
+  "info": {
+    "_postman_id": "matching-service-collection",
+    "name": "Matching Service API Tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create Loan",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"info\": {\n    \"periodMonth\": 12,\n    \"capital\": 1000000,\n    \"rate\": 8\n  },\n  \"status\": \"waiting\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:3000/loan",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["loan"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Investment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"info\": {\n    \"periodMonth\": 12,\n    \"capital\": 1000000,\n    \"rate\": 8\n  },\n  \"status\": \"waiting\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:3000/investment",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["investment"]
+        }
+      },
+      "response": []
+    }
+  ]
+}

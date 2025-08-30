@@ -9,7 +9,7 @@ const InvestmentSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        default: 'waiting_other'
+        default: 'waiting'
     },
     lender: String,
     createdAt: {
