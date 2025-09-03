@@ -1,17 +1,22 @@
-// routes/investment.js
 const express = require('express');
 const router = express.Router();
 const Investment = require('../models/investment');
 const Loan = require('../models/loan');
 const matcher = require('../services/matcher');
+const {
+    coerceNumber,
+    coerceDate,
+    ensureFields
+} = require('../utils/validate');
 
 // Tạo Investment và match Loan
 router.post('/', async (req, res) => {
     try {
-        const requiredFields = ['rate', 'capital', 'periodMonth', 'createdDate'];
-        const missing = requiredFields.filter(f => !req.body.info?. [f]);
-        if (!req.body.lender) missing.push('lender');
-
+        const missingRoot = ensureFields(req.body, ['info', 'lender', 'investmentContract']);
+        const missingInfo = req.body.info ? ensureFields(req.body.info, [
+            'rate', 'capital', 'periodMonth', 'createdDate'
+        ], 'info') : ['info'];
+        const missing = [...missingRoot, ...missingInfo];
         if (missing.length) {
             return res.status(400).json({
                 mess: `Thiếu dữ liệu: ${missing.join(', ')}`,
@@ -20,33 +25,43 @@ router.post('/', async (req, res) => {
             });
         }
 
+        // Ép kiểu
+        const rate = coerceNumber(req.body.info.rate, 'info.rate');
+        const capital = coerceNumber(req.body.info.capital, 'info.capital');
+        const periodMonth = coerceNumber(req.body.info.periodMonth, 'info.periodMonth');
+        const createdDate = coerceDate(req.body.info.createdDate, 'info.createdDate');
+
         const investment = new Investment({
             info: {
-                rate: req.body.info.rate,
-                capital: req.body.info.capital,
-                periodMonth: req.body.info.periodMonth,
-                createdDate: req.body.info.createdDate
+                rate,
+                capital,
+                periodMonth,
+                createdDate
             },
             lender: req.body.lender,
+            investmentContract: req.body.investmentContract,
             status: 'waiting'
         });
         await investment.save();
 
-        // Tìm Loan phù hợp
         const now = new Date();
         const loan = await Loan.findOne({
-            status: 'waiting',
-            'info.rate': investment.info.rate,
-            'info.periodMonth': investment.info.periodMonth,
-            'info.investingEndDate': {
-                $gte: now
-            }
-        }).sort({
-            createdAt: 1
-        });
-
+                status: 'waiting',
+                'info.rate': rate,
+                'info.periodMonth': periodMonth,
+                'info.investingEndDate': {
+                    $gte: now
+                },
+                'info.capital': {
+                    $gt: 0
+                }
+            })
+            .select('_id loanContract') // <-- cần cả loanContract để trả về
+            .sort({
+                createdAt: 1
+            })
+            .lean();
         if (loan) {
-            // Truyền capital thay vì amount
             const result = await matcher.matchOrder({
                 loanId: loan._id,
                 investmentId: investment._id,
@@ -57,21 +72,22 @@ router.post('/', async (req, res) => {
                 mess: 'Investment đã tạo và khớp lệnh thành công',
                 httpStatus: 201,
                 data: {
-                    loan: result.loan,
-                    investment: result.investment,
-                    matching: result.matching
+                    loanContract: loan.loanContract, // dùng field đã select
+                    investmentContract: investment.investmentContract,
+                    matchingId: result.matchingId,
+                    capital: result.capital ?? investment.info.capital
                 }
             });
         }
 
+        // KHÔNG truy cập loan.* vì loan = null
         return res.status(201).json({
             mess: 'Investment đã tạo nhưng chưa match được loan nào',
             httpStatus: 201,
             data: {
-                investment
+                investmentContract: investment.investmentContract
             }
         });
-
     } catch (err) {
         return res.status(400).json({
             mess: 'Lỗi',

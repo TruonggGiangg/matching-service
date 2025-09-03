@@ -2,24 +2,45 @@ const mongoose = require('mongoose');
 
 const InvestmentSchema = new mongoose.Schema({
     info: {
-        periodMonth: Number,
-        capital: Number,
-        createdDate: Date,
-        rate: Number
+        periodMonth: {
+            type: Number,
+            min: 0,
+            required: true
+        },
+        capital: {
+            type: Number,
+            min: 0,
+            required: true
+        }, // còn lại (remaining)
+        createdDate: {
+            type: Date,
+            required: true
+        },
+        rate: {
+            type: Number,
+            required: true
+        }
     },
     status: {
         type: String,
         default: 'waiting'
     },
-    lender: String,
-    createdAt: {
-        type: Date,
-        default: Date.now
+    status: {
+        type: String,
+        enum: ['waiting', 'filled', 'cancelled'],
+        default: 'waiting',
+        index: true
     },
-    updatedAt: {
-        type: Date,
-        default: Date.now
+    lender: {
+        type: String,
+        required: true
+    },
+    investmentContract: {
+        type: String,
+        required: true
     }
+}, {
+    timestamps: true
 });
 
 InvestmentSchema.index({
@@ -28,11 +49,16 @@ InvestmentSchema.index({
 });
 
 InvestmentSchema.index({
-    'info.rate': 1,
-    'info.capital': 1,
-    'info.periodMonth': 1,
-    status: 1,
+    rate: 1,
+    periodMonth: 1,
     createdAt: 1
+}, {
+    partialFilterExpression: {
+        status: 'waiting',
+        capitalRemaining: {
+            $gt: 0
+        }
+    }
 });
 
 module.exports = mongoose.model('Investment', InvestmentSchema);

@@ -3,25 +3,29 @@ const mongoose = require('mongoose');
 const MatchingSchema = new mongoose.Schema({
     loanId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Loan'
+        ref: 'Loan',
+        required: true,
+        index: true
     },
     investmentId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Investment'
+        ref: 'Investment',
+        required: true,
+        index: true
     },
-    amount: Number,
+    amount: {
+        type: Number,
+        min: 0,
+        required: true
+    },
     status: {
         type: String,
+        enum: ['filled', 'partial', 'cancelled'],
         default: 'filled'
     },
-    createdAt: {
-        type: Date,
-        default: Date.now
-    },
-    updatedAt: {
-        type: Date,
-        default: Date.now
-    }
+
+}, {
+    timestamps: true
 });
 
 module.exports = mongoose.model('Matching', MatchingSchema);
