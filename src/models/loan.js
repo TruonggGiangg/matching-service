@@ -27,6 +27,13 @@ const LoanSchema = new mongoose.Schema({
             type: Date,
             required: true
         },
+        node: {
+            type: Number,
+        },
+        investedNode: {
+            type: Number,
+            default: 0
+        }
     },
     status: {
         type: String,
@@ -42,6 +49,7 @@ const LoanSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+
 
 }, {
     timestamps: true
@@ -65,5 +73,6 @@ LoanSchema.index({
         }
     }
 });
+
 
 module.exports = mongoose.model('Loan', LoanSchema);

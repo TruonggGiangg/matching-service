@@ -19,6 +19,13 @@ const InvestmentSchema = new mongoose.Schema({
         rate: {
             type: Number,
             required: true
+        },
+        node: {
+            type: Number,
+        },
+        investedNode: {
+            type: Number,
+            default: 0
         }
     },
     status: {

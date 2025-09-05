@@ -32,6 +32,16 @@ router.post('/', async (req, res) => {
         const createdDate = coerceDate(req.body.info.createdDate, 'info.createdDate');
         const investingEndDate = coerceDate(req.body.info.investingEndDate, 'info.investingEndDate');
 
+
+
+        if (capital % 500000 !== 0) {
+            return res.status(400).json({
+                mess: 'Số tiền đầu tư phải chia hết cho 500000',
+                httpStatus: 400,
+                data: {}
+            });
+        }
+        const node = req.body.info.capital / 500000;
         const loan = new Loan({
             info: {
                 rate,
@@ -39,7 +49,8 @@ router.post('/', async (req, res) => {
                 periodMonth,
                 willing: req.body.info.willing,
                 createdDate,
-                investingEndDate
+                investingEndDate,
+                node
             },
             borrower: req.body.borrower,
             loanContract: req.body.loanContract,
@@ -47,45 +58,24 @@ router.post('/', async (req, res) => {
         });
         await loan.save();
 
-        // Tìm Investment phù hợp (thêm điều kiện capital>0)
-        const investmentMin = await Investment.findOne({
-                status: 'waiting',
-                'info.rate': rate,
-                'info.periodMonth': periodMonth,
-                'info.capital': {
-                    $gt: 0
-                }
-            })
-            .select('_id investmentContract') // <-- cần investmentContract
-            .sort({
-                createdAt: 1
-            })
-            .lean();
-
-        if (investmentMin) {
-            const result = await matcher.matchOrder({
-                loanId: loan._id,
-                investmentId: investmentMin._id,
-                capital: loan.info.capital
+        // Sau khi tạo loan, tự động match với investment nếu có
+        let matchResult = null;
+        try {
+            matchResult = await matcher.matchLoanOrder({
+                loanContract: loan.loanContract
             });
-
-            return res.status(201).json({
-                mess: 'Loan đã tạo và khớp lệnh thành công',
-                httpStatus: 201,
-                data: {
-                    loanContract: loan.loanContract,
-                    investmentContract: investmentMin.investmentContract,
-                    matchingId: result.matchingId,
-                    capital: result.capital ?? loan.info.capital
-                }
-            });
+        } catch (e) {
+            // ignore match error, vẫn trả về loan
         }
-
+        if (matchResult) {
+            return res.status(matchResult.httpStatus || 201).json(matchResult);
+        }
         return res.status(201).json({
-            mess: 'Loan đã tạo nhưng chưa match được investment nào',
+            mess: 'Loan đã tạo thành công',
             httpStatus: 201,
             data: {
-                loanContract: loan.loanContract
+                loanContract: loan.loanContract,
+                node: loan.info.node
             }
         });
     } catch (err) {

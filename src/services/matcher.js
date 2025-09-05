@@ -1,3 +1,92 @@
+// Match khi tạo loan mới
+exports.matchLoanOrder = async ({
+    loanContract
+}) => {
+    const session = await Matching.startSession();
+    session.startTransaction();
+    try {
+        const loan = await Loan.findOne({
+            loanContract
+        }).session(session);
+        if (!loan) {
+            await session.abortTransaction();
+            session.endSession();
+            return {
+                mess: 'Không tìm thấy loan',
+                httpStatus: 404,
+                data: {}
+            };
+        }
+        let remainNode = loan.info.node - (loan.info.investedNode || 0);
+        let matched = [];
+        // FIFO match từng investment theo node
+        const investments = await Investment.find({
+            status: 'waiting',
+            'info.rate': loan.info.rate,
+            'info.periodMonth': loan.info.periodMonth,
+            $expr: {
+                $lt: ["$info.investedNode", "$info.node"]
+            }
+        }).sort({
+            createdAt: 1
+        }).session(session);
+        for (const investment of investments) {
+            if (remainNode <= 0) break;
+            const investNode = investment.info.node;
+            const investRemainNode = investNode - (investment.info.investedNode || 0);
+            if (investRemainNode <= remainNode) {
+                // Match hết investment này
+                const matchNode = investRemainNode;
+                remainNode -= matchNode;
+                investment.info.investedNode = (investment.info.investedNode || 0) + matchNode;
+                if (investment.info.investedNode === investment.info.node) investment.status = 'filled';
+                await investment.save({
+                    session
+                });
+                matched.push({
+                    investmentId: investment._id,
+                    matchedNode: matchNode
+                });
+            } else {
+                // Match hết loan
+                const matchNode = remainNode;
+                investment.info.investedNode = (investment.info.investedNode || 0) + matchNode;
+                if (investment.info.investedNode === investment.info.node) investment.status = 'filled';
+                await investment.save({
+                    session
+                });
+                matched.push({
+                    investmentId: investment._id,
+                    matchedNode: matchNode
+                });
+                remainNode = 0;
+                break;
+            }
+        }
+        loan.info.investedNode = loan.info.node - remainNode;
+        if (loan.info.investedNode === loan.info.node) loan.status = 'filled';
+        await loan.save({
+            session
+        });
+        await session.commitTransaction();
+        session.endSession();
+        return {
+            mess: matched.length > 0 ? 'Loan đã match thành công' : 'Loan đã tạo nhưng chưa match được investment nào',
+            httpStatus: 201,
+            data: {
+                loanContract: loan.loanContract,
+                status: loan.status,
+                node: loan.info.node,
+                investedNode: loan.info.investedNode || 0,
+                matched
+            }
+        };
+    } catch (err) {
+        await session.abortTransaction();
+        session.endSession();
+        throw err;
+    }
+};
 // services/matcher.js
 const Loan = require('../models/loan');
 const Investment = require('../models/investment');
@@ -8,97 +97,100 @@ const {
 
 const formatCurrency = (amount) => amount.toLocaleString('vi-VN') + ' VND';
 
-exports.matchOrder = async ({
 
-    loanId,
-    investmentId,
-    capital
+exports.matchOrder = async ({
+    investmentContract
 }) => {
     const session = await Matching.startSession();
     session.startTransaction();
-
     try {
-        const now = new Date();
-
-        // Tìm theo ObjectId
-        const loan = await Loan.findById(loanId).session(session);
-        const investment = await Investment.findById(investmentId).session(session);
-
-        // Nếu không tìm thấy loan hoặc investment thì thôi, không làm gì cả
-        if (!loan || !investment) {
+        const investment = await Investment.findOne({
+            investmentContract
+        }).session(session);
+        if (!investment) {
             await session.abortTransaction();
             session.endSession();
-            return null;
+            return {
+                mess: 'Không tìm thấy investment',
+                httpStatus: 404,
+                data: {}
+            };
         }
-
-        if (Number(loan.info.rate) !== Number(investment.info.rate) ||
-            Number(loan.info.periodMonth) !== Number(investment.info.periodMonth)) {
-            // Không match thì thôi, không làm gì cả
+        // B1: kiểm tra capital của investment có chia hết cho 500000 không
+        if (investment.info.capital % 500000 !== 0) {
             await session.abortTransaction();
             session.endSession();
-            return null;
+            return {
+                mess: 'Số tiền đầu tư phải chia hết cho 500000',
+                httpStatus: 400,
+                data: {
+                    investmentContract
+                }
+            };
         }
-
-        const matchCapital = Math.min(
-            Number(capital) || 0,
-            loan.info.capital,
-            investment.info.capital
-        );
-        if (!(matchCapital > 0)) throw new Error('Capital match không hợp lệ');
-
-        // Trừ vốn
-        loan.info.capital -= matchCapital;
-        investment.info.capital -= matchCapital;
-
-        if (loan.info.capital === 0) loan.status = 'filled';
-        if (investment.info.capital === 0) investment.status = 'filled';
-
-        await loan.save({
-            session
-        });
+        let remainNode = investment.info.node - (investment.info.investedNode || 0);
+        let matched = [];
+        // FIFO match từng loan theo node
+        const loans = await Loan.find({
+            status: 'waiting',
+            'info.rate': investment.info.rate,
+            'info.periodMonth': investment.info.periodMonth,
+            $expr: {
+                $lt: ["$info.investedNode", "$info.node"]
+            }
+        }).sort({
+            createdAt: 1
+        }).session(session);
+        for (const loan of loans) {
+            if (remainNode <= 0) break;
+            const loanNode = loan.info.node;
+            const loanRemainNode = loanNode - (loan.info.investedNode || 0);
+            if (loanRemainNode <= remainNode) {
+                // Match hết loan này
+                const matchNode = loanRemainNode;
+                remainNode -= matchNode;
+                loan.info.investedNode = (loan.info.investedNode || 0) + matchNode;
+                if (loan.info.investedNode === loan.info.node) loan.status = 'filled';
+                await loan.save({
+                    session
+                });
+                matched.push({
+                    loanId: loan._id,
+                    matchedNode: matchNode
+                });
+            } else {
+                // Match hết investment
+                const matchNode = remainNode;
+                loan.info.investedNode = (loan.info.investedNode || 0) + matchNode;
+                if (loan.info.investedNode === loan.info.node) loan.status = 'filled';
+                await loan.save({
+                    session
+                });
+                matched.push({
+                    loanId: loan._id,
+                    matchedNode: matchNode
+                });
+                remainNode = 0;
+                break;
+            }
+        }
+        investment.info.investedNode = investment.info.node - remainNode;
+        if (investment.info.investedNode === investment.info.node) investment.status = 'filled';
         await investment.save({
             session
         });
-
-        const [matching] = await Matching.create([{
-            loanId: loan._id,
-            investmentId: investment._id,
-            amount: matchCapital,
-            status: 'filled',
-        }], {
-            session
-        });
-
         await session.commitTransaction();
         session.endSession();
-
-        // Thông báo KHÔNG nằm trong transaction (tránh rollback vì lỗi notify)
-        try {
-            const nowStr = now.toLocaleString('vi-VN');
-            notifyUser(loan.borrower, {
-                type: 'matched',
-                messages: [
-                    `Hợp đồng vay của bạn đã được khớp lúc ${nowStr} với nhà đầu tư ${investment.lender || 'chưa rõ'}, số tiền ${formatCurrency(matchCapital)}.`
-                ],
-                matching
-            });
-            notifyUser(investment.lender, {
-                type: 'matched',
-                messages: [
-                    `Hợp đồng đầu tư của bạn đã được khớp lúc ${nowStr} với người vay ${loan.borrower || 'chưa rõ'}, số tiền ${formatCurrency(matchCapital)}.`
-                ],
-                matching
-            });
-        } catch (notifyErr) {
-            // Ghi log, không throw để tránh ảnh hưởng luồng chính
-            console.error('[notifyUser] error:', notifyErr);
-        }
-
         return {
-            loanId: loan._id,
-            investmentId: investment._id,
-            matchingId: matching._id,
-            capital: matching.amount
+            mess: matched.length > 0 ? 'Investment đã match thành công' : 'Investment đã tạo nhưng chưa match được loan nào',
+            httpStatus: 201,
+            data: {
+                investmentContract: investment.investmentContract,
+                status: investment.status,
+                node: investment.info.node,
+                investedNode: investment.info.investedNode || 0,
+                matched
+            }
         };
     } catch (err) {
         await session.abortTransaction();
